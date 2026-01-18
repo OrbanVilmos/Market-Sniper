@@ -7,21 +7,20 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Expanded products with sub-model support
 products = {
-    "iphone 15 pro max": {"market_value": 3000, "min_profit": 500},
-    "iphone 15 pro":     {"market_value": 2600, "min_profit": 450},
-    "iphone 15 plus":    {"market_value": 2200, "min_profit": 400},
-    "iphone 15":         {"market_value": 2000, "min_profit": 350},
-    "iphone 14 pro max": {"market_value": 2200, "min_profit": 400},
-    "iphone 14 pro":     {"market_value": 1900, "min_profit": 350},
-    "iphone 14":         {"market_value": 1500, "min_profit": 300},
+    "iphone 15 pro max": {"market_value": 3000, "min_profit": 300},
+    "iphone 15 pro":     {"market_value": 2600, "min_profit": 300},
+    "iphone 15 plus":    {"market_value": 2200, "min_profit": 200},
+    "iphone 15":         {"market_value": 1800, "min_profit": 200},
+    "iphone 14 pro max": {"market_value": 2200, "min_profit": 200},
+    "iphone 14 pro":     {"market_value": 1900, "min_profit": 200},
+    "iphone 14":         {"market_value": 1500, "min_profit": 200},
     "iphone 13 mini":    {"market_value": 900, "min_profit": 200},
-    "iphone 13":         {"market_value": 1000, "min_profit": 250},
+    "iphone 13":         {"market_value": 1000, "min_profit": 200},
     "iphone 12":         {"market_value": 650, "min_profit": 200}
 }
 
-problems = ["icloud", "piese", "recarosare", "blocat", "nefunctional"]
+problems = ["icloud blocat", "piese", "display", "recarosare", "nefunctional"]
 
 def clean_price(price_string):
     numeric_filter = filter(str.isdigit, price_string)
@@ -38,9 +37,22 @@ def get_sub_model_type(title):
 
 def run_sniper():
     print("---  iPhone Sniper Pro ---")
-    print("Options: 15 Pro Max, 15 Pro, 15 Plus, 15, 14, 13 mini, etc.")
-    user_search = input("Which specific model are you looking for? ").strip().lower()
-
+    user_search = input("Model name: ").strip().lower()
+    
+    # Check for an exact match first (e.g., user typed "iphone 15 pro")
+    if user_search in products:
+        m_val = products[user_search]["market_value"]
+        min_price = int(m_val / 2)
+        max_price = m_val
+    else:
+        # Broad match logic (e.g., user typed "15")
+        matching_vals = [v["market_value"] for k, v in products.items() if user_search in k]
+        if not matching_vals:
+            print("Model not found in database.")
+            return
+        min_price = int(min(matching_vals) / 2)
+        max_price = max(matching_vals)
+    
     options = Options()
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -51,10 +63,14 @@ def run_sniper():
     
     try:
         search_query = user_search.replace(" ", "-")
-        url = f"https://www.olx.ro/oferte/q-{search_query}/?search%5Border%5D=created_at%3Adesc"
+        url = (f"https://www.olx.ro/oferte/q-{search_query}/?"
+               f"search%5Bfilter_float_price%3Afrom%5D={min_price}&"
+               f"search%5Bfilter_float_price%3Ato%5D={max_price}&"
+               f"search%5Border%5D=created_at%3Adesc")
+        
         driver.get(url)
         
-        print(f"\nScanning OLX for: {user_search.upper()}...")
+        print(f"\nScanning OLX for: {user_search.upper()} (Price: {min_price}-{max_price} RON)...")
         print("'DE ACORD' (Cookies)")
         time.sleep(5) 
 
@@ -64,7 +80,6 @@ def run_sniper():
         all_ads = driver.find_elements(By.CSS_SELECTOR, 'div[data-cy="l-card"]')
         
         deals_found = []
-
         for ad in all_ads:
             try:
                 full_card_text = ad.get_attribute('innerText')
