@@ -20,7 +20,7 @@ products = {
     "iphone 12":         {"market_value": 650, "min_profit": 200}
 }
 
-problems = ["icloud blocat", "piese", "display", "recarosare", "nefunctional"]
+problems = ["icloud blocat", "display", "piese", "recarosare", "nefunctional"]
 
 def clean_price(price_string):
     numeric_filter = filter(str.isdigit, price_string)
@@ -39,13 +39,11 @@ def run_sniper():
     print("---  iPhone Sniper Pro ---")
     user_search = input("Model name: ").strip().lower()
     
-    # Check for an exact match first (e.g., user typed "iphone 15 pro")
     if user_search in products:
         m_val = products[user_search]["market_value"]
         min_price = int(m_val / 2)
         max_price = m_val
     else:
-        # Broad match logic (e.g., user typed "15")
         matching_vals = [v["market_value"] for k, v in products.items() if user_search in k]
         if not matching_vals:
             print("Model not found in database.")
@@ -60,72 +58,73 @@ def run_sniper():
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    
+    deals_found = []
+
     try:
-        search_query = user_search.replace(" ", "-")
-        url = (f"https://www.olx.ro/oferte/q-{search_query}/?"
-               f"search%5Bfilter_float_price%3Afrom%5D={min_price}&"
-               f"search%5Bfilter_float_price%3Ato%5D={max_price}&"
-               f"search%5Border%5D=created_at%3Adesc")
-        
-        driver.get(url)
-        
-        print(f"\nScanning OLX for: {user_search.upper()} (Price: {min_price}-{max_price} RON)...")
-        print("'DE ACORD' (Cookies)")
-        time.sleep(5) 
+        for page_num in range(1, 4):
+            search_query = user_search.replace(" ", "-")
+            url = (f"https://www.olx.ro/oferte/q-{search_query}/?"
+                   f"search%5Bfilter_float_price%3Afrom%5D={min_price}&"
+                   f"search%5Bfilter_float_price%3Ato%5D={max_price}&"
+                   f"search%5Border%5D=created_at%3Adesc&page={page_num}")
+            
+            driver.get(url)
+            
+            if page_num == 1:
+                print(f"\nScanning OLX for: {user_search.upper()} (Price: {min_price}-{max_price} RON)...")
+                print("'DE ACORD' (Cookies)")
+                time.sleep(5)
+            else:
+                print(f"Scanning Page {page_num}...")
+                time.sleep(2)
 
-        wait = WebDriverWait(driver, 15)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-cy="l-card"]')))
-
-        all_ads = driver.find_elements(By.CSS_SELECTOR, 'div[data-cy="l-card"]')
-        
-        deals_found = []
-        for ad in all_ads:
+            wait = WebDriverWait(driver, 15)
             try:
-                full_card_text = ad.get_attribute('innerText')
-                lines = [line.strip() for line in full_card_text.split('\n') if line.strip()]
-                title = lines[0].lower()
-                
-                if user_search not in title:
-                    continue
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-cy="l-card"]')))
+            except:
+                print(f"No more listings found or page failed to load at page {page_num}.")
+                break
 
-                if any(flag in title for flag in problems):
-                    continue
-
-                model_category = get_sub_model_type(title)
-
-                price_raw = next((line for line in lines if "lei" in line.lower()), "0")
-                current_price = clean_price(price_raw)
-                if current_price < 200: continue
-
-                matched_model = next((m for m in products if m in title), None)
-                
-                if matched_model:
-                    data = products[matched_model]
-                    target_buy = data["market_value"] - data["min_profit"]
+            all_ads = driver.find_elements(By.CSS_SELECTOR, 'div[data-cy="l-card"]')
+            
+            for ad in all_ads:
+                try:
+                    full_card_text = ad.get_attribute('innerText')
+                    lines = [line.strip() for line in full_card_text.split('\n') if line.strip()]
+                    title = lines[0].lower()
                     
-                    condition_note = "PERFECT"
-                    if "spate spart" in title or "capac spart" in title:
-                        target_buy -= 200
-                        condition_note = "SPATE SPART"
-                    elif "ecran spart" in title or "display spart" in title:
-                        target_buy -= 500
-                        condition_note = "ECRAN SPART"
+                    if user_search not in title:
+                        continue
+                    if any(flag in title for flag in problems):
+                        continue
 
-                    if current_price <= target_buy:
-                        profit = data["market_value"] - current_price
-                        link = ad.find_element(By.TAG_NAME, 'a').get_attribute('href')
-                        deals_found.append({
-                            "title": title.upper(),
-                            "type": model_category,
-                            "price": current_price,
-                            "profit": profit,
-                            "note": condition_note,
-                            "link": link
-                        })
+                    model_category = get_sub_model_type(title)
+                    price_raw = next((line for line in lines if "lei" in line.lower()), "0")
+                    current_price = clean_price(price_raw)
+                    if current_price < 200: continue
 
-            except Exception:
-                continue
+                    matched_model = next((m for m in products if m in title), None)
+                    
+                    if matched_model:
+                        data = products[matched_model]
+                        target_buy = data["market_value"] - data["min_profit"]
+                        
+                        if "spate spart" in title or "capac spart" in title:
+                            target_buy -= 200
+                        elif "ecran spart" in title or "display spart" in title:
+                            target_buy -= 500
+
+                        if current_price <= target_buy:
+                            link = ad.find_element(By.TAG_NAME, 'a').get_attribute('href')
+                            deals_found.append({
+                                "title": title.upper(),
+                                "type": model_category,
+                                "price": current_price,
+                                "profit": data["market_value"] - current_price,
+                                "link": link
+                            })
+                except:
+                    continue
 
         print("\n" + "="*40)
         print(f"PROFITABLE DEALS FOR: {user_search.upper()}")
@@ -136,8 +135,8 @@ def run_sniper():
         else:
             for deal in deals_found:
                 print(f"{deal['title']}")
-                print(f"   [Type: {deal['type']}] | [Condition: {deal['note']}]")
-                print(f"   BUY: {deal['price']} RON | EST. PROFIT: {deal['profit']} RON")
+                print(f"   [Type: {deal['type']}]")
+                print(f"   BUY: {deal['price']} RON | PROFIT: {deal['profit']} RON")
                 print(f"   LINK: {deal['link']}")
                 print("-" * 20)
 
